@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using API.Helpers;
+using API.Models;
+using Core.Interfaces;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -30,8 +33,30 @@ namespace API
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-
+           
+            services.AddScoped<IProductRepository,ProductRepository>();
             services.AddControllers();
+            services.AddScoped(typeof(IGenericRepo<>),typeof(GenericRepo<>));
+            services.Configure<ApiBehaviorOptions>(
+                opts=>
+                {
+                    opts.InvalidModelStateResponseFactory=context =>
+                    {
+                        List<string> errors = new List<string>();
+                        foreach(var state in context.ModelState.Values)
+                        {
+                            foreach(var error in state.Errors)
+                            {
+                                errors.Add(error.ErrorMessage);
+                            }
+                        }
+                        return new BadRequestObjectResult( 
+                             new ApiErrorResponse(400,string.Join(",",errors))
+                             
+                             );
+                    };
+                });
+            services.AddAutoMapper(typeof(AutoMapperProfiles));
             services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "API", Version = "v1" });
@@ -42,9 +67,11 @@ namespace API
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            app.UseMiddleware<ExceptionHandlingMidleware>();
             if (env.IsDevelopment())
             {
-                app.UseDeveloperExceptionPage();
+                //app.UseDeveloperExceptionPage();
+                app.UseStatusCodePagesWithReExecute("/api/error/errors/{0}");
                 app.UseSwagger();
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "API v1"));
             }
@@ -52,7 +79,7 @@ namespace API
             app.UseHttpsRedirection();
 
             app.UseRouting();
-
+            app.UseStaticFiles();
             app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
